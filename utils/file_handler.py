@@ -8,6 +8,9 @@ from utils.display import progress_indicator
 from colorama import Fore, Style
 from models.whisper_model import transcribe_audio
 from pydub import AudioSegment
+import webrtcvad
+import numpy as np
+
 
 # Create a global event to control the progress indicator
 stop_progress_event = Event()
@@ -74,14 +77,14 @@ class AudioHandler(FileSystemEventHandler):
         stop_progress_event.clear()
         progress_thread = Thread(target=progress_indicator)
         progress_thread.start()
-    
+
         # Transcribe the audio file
         result = transcribe_audio(file_path)
-    
+
         # Stop the progress indicator
         stop_progress_event.set()
         progress_thread.join()
-    
+
         # Format and print the output with hyphen
         output = f"{Fore.GREEN + Style.BRIGHT}{formatted_creation_datetime}{Style.RESET_ALL} "
         if from_number:
@@ -92,7 +95,7 @@ class AudioHandler(FileSystemEventHandler):
             print(f"{Fore.YELLOW} [⚠️] SDRTrunk filename format not fully recognized{Style.RESET_ALL}")
         output += f"- {Fore.WHITE + Style.BRIGHT}{result}{Style.RESET_ALL}"
         print(output)
-    
+
         display.print_waiting_message()
 
     def is_short_audio(self, file_path):
@@ -102,9 +105,34 @@ class AudioHandler(FileSystemEventHandler):
         # Check if the duration is shorter than 1.5 seconds
         return duration_in_seconds < 1.5
 
-    def is_silent_audio(self, file_path):
-        audio = AudioSegment.from_file(file_path)
+def is_silent_audio(self, file_path):
+    # Initialize VAD (Voice Activity Detector)
+    vad = webrtcvad.Vad()
+    
+    # Load the audio file
+    audio = AudioSegment.from_file(file_path)
+    sample_rate = audio.frame_rate
+    samples = np.array(audio.get_array_of_samples())
 
-        # Analyze the audio file for speech presence
-        samples = audio.get_array_of_samples()
-        return max(samples) - min(samples) < 500  # Simple threshold for detecting speech
+    # Convert samples to 16-bit PCM
+    if audio.sample_width == 2:
+        samples = samples.astype(np.int16)
+    else:
+        samples = (samples / 256).astype(np.int16)
+    
+    # Frame parameters for VAD
+    frame_duration = 30  # milliseconds
+    frame_size = int(sample_rate * frame_duration / 1000)
+    
+    # Check if audio is too short
+    if len(samples) < frame_size:
+        return True
+    
+    # Detect speech in frames
+    for start in range(0, len(samples) - frame_size, frame_size):
+        frame = samples[start:start + frame_size]
+        if vad.is_speech(frame.tobytes(), sample_rate):
+            return False  # Speech detected
+
+    return True  # No speech detected
+
