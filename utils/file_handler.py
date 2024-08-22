@@ -1,23 +1,17 @@
 import os
 import re
 from datetime import datetime
-from threading import Thread, Event
+from threading import Thread
 from watchdog.events import FileSystemEventHandler
-from pydub import AudioSegment
-import webrtcvad
 from utils import display
-from utils.display import progress_indicator, stop_progress
+from utils.display import progress_indicator, stop_progress_event
 from colorama import Fore, Style
 from models.whisper_model import transcribe_audio
-
-# Create a global event to control the progress indicator
-stop_progress_event = Event()
+from pydub import AudioSegment
 
 class AudioHandler(FileSystemEventHandler):
     def __init__(self, model):
         self.model = model
-        self.vad = webrtcvad.Vad()
-        self.vad.set_mode(1)  # 0 is least aggressive, 3 is most aggressive
 
     def on_created(self, event):
         if event.is_directory:
@@ -27,16 +21,16 @@ class AudioHandler(FileSystemEventHandler):
             self.process_audio_file(event.src_path)
 
     def process_audio_file(self, file_path):
-        # Check if the audio file is too short
-        if self.is_audio_too_short(file_path, 1.5):
-            print(f"{Fore.YELLOW} [⚠️] Audio file too short, deleting: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
+        if self.is_short_audio(file_path):
             os.remove(file_path)
+            print(f"\n[🗑️] Deleted short audio file: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
+            display.print_waiting_message()
             return
 
-        # Check if the audio file contains speech
-        if not self.contains_speech(file_path):
-            print(f"{Fore.YELLOW} [⚠️] No speech detected, deleting: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
+        if self.is_silent_audio(file_path):
             os.remove(file_path)
+            print(f"\n[🗑️] Deleted silent audio file: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
+            display.print_waiting_message()
             return
 
         filename = os.path.basename(file_path)
@@ -49,49 +43,17 @@ class AudioHandler(FileSystemEventHandler):
 
         # Extract FROM and TO numbers using regex
         from_number, to_number = self.extract_from_to_numbers(filename)
-        
-        if from_number or to_number:
-            self.transcribe_and_print_result(file_path, formatted_creation_datetime, from_number, to_number)
-        else:
-            print(f"{Fore.YELLOW} [⚠️] SDRTrunk filename format not found{Style.RESET_ALL}")
-            self.transcribe_and_print_result(file_path, formatted_creation_datetime)
-
-    def is_audio_too_short(self, file_path, threshold_seconds):
-        # Load the audio file and get its duration
-        audio = AudioSegment.from_file(file_path)
-        duration_seconds = len(audio) / 1000.0  # Convert milliseconds to seconds
-        return duration_seconds < threshold_seconds
-
-    def contains_speech(self, file_path):
-        audio = AudioSegment.from_file(file_path)
-        audio = audio.set_frame_rate(16000).set_channels(1)  # Set to mono and 16kHz for VAD
-
-        samples = audio.get_array_of_samples()
-        vad = webrtcvad.Vad()
-        vad.set_mode(1)  # Adjust aggressiveness mode 0-3
-
-        # Split audio into 30ms chunks
-        chunk_size = int(16000 * 0.03)
-        chunks = [samples[i:i + chunk_size] for i in range(0, len(samples), chunk_size)]
-
-        # Check each chunk for speech
-        for chunk in chunks:
-            if vad.is_speech(chunk.tobytes(), 16000):
-                return True  # Speech detected
-
-        return False  # No speech detected
+        self.transcribe_and_print_result(file_path, formatted_creation_datetime, from_number, to_number)
 
     def extract_from_to_numbers(self, filename):
-        match = re.search(r'TO_(\d+)_FROM_(\d+)', filename)
-        if match:
-            to_number = match.group(1)
-            from_number = match.group(2)
-            return from_number, to_number
-        return None, None
+        to_match = re.search(r'TO_(\d+)', filename)
+        from_match = re.search(r'FROM_(\d+)', filename)
+        to_number = to_match.group(1) if to_match else ''
+        from_number = from_match.group(1) if from_match else ''
+        return from_number, to_number
 
-    def transcribe_and_print_result(self, file_path, formatted_creation_datetime, from_number=None, to_number=None):
+    def transcribe_and_print_result(self, file_path, formatted_creation_datetime, from_number='', to_number=''):
         # Start the progress indicator
-        global stop_progress
         stop_progress_event.clear()
         progress_thread = Thread(target=progress_indicator)
         progress_thread.start()
@@ -103,15 +65,29 @@ class AudioHandler(FileSystemEventHandler):
         stop_progress_event.set()
         progress_thread.join()
 
-        # Build the output message
-        from_text = f"{Fore.BLUE}FROM {from_number}{Style.RESET_ALL}" if from_number else ""
-        to_text = f"{Fore.RED}TO {to_number}{Style.RESET_ALL}" if to_number else ""
-
-        if from_text or to_text:
-            print(f"{Fore.GREEN + Style.BRIGHT}{formatted_creation_datetime}{Style.RESET_ALL} "
-                  f"{from_text} {to_text} - "
-                  f"{Fore.WHITE + Style.BRIGHT}{result}{Style.RESET_ALL}")
-        else:
-            print(f"{Fore.YELLOW} [⚠️] SDRTrunk filename format not found. Transcription: {Fore.WHITE + Style.BRIGHT}{result}{Style.RESET_ALL}")
+        # Format and print the output with hyphen
+        output = f"{Fore.GREEN + Style.BRIGHT}{formatted_creation_datetime}{Style.RESET_ALL} "
+        if from_number:
+            output += f"{Fore.BLUE}FROM {from_number}{Style.RESET_ALL} "
+        if to_number:
+            output += f"{Fore.RED}TO {to_number}{Style.RESET_ALL} "
+        if not from_number and not to_number:
+            print(f"{Fore.YELLOW} [⚠️] SDRTrunk filename format not fully recognized{Style.RESET_ALL}")
+        output += f"- {Fore.WHITE + Style.BRIGHT}{result}{Style.RESET_ALL}"
+        print(output)
 
         display.print_waiting_message()
+
+    def is_short_audio(self, file_path):
+        audio = AudioSegment.from_file(file_path)
+        duration_in_seconds = len(audio) / 1000.0
+
+        # Check if the duration is shorter than 1.5 seconds
+        return duration_in_seconds < 1.5
+
+    def is_silent_audio(self, file_path):
+        audio = AudioSegment.from_file(file_path)
+
+        # Analyze the audio file for speech presence
+        samples = audio.get_array_of_samples()
+        return max(samples) - min(samples) < 500  # Simple threshold for detecting speech
