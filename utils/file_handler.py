@@ -105,34 +105,34 @@ class AudioHandler(FileSystemEventHandler):
         # Check if the duration is shorter than 1.5 seconds
         return duration_in_seconds < 1.5
 
-def is_silent_audio(self, file_path):
-    # Initialize VAD (Voice Activity Detector)
-    vad = webrtcvad.Vad()
+    def is_silent_audio(self, file_path):
+        # Initialize VAD (Voice Activity Detector)
+        vad = webrtcvad.Vad()
+        
+        # Load the audio file
+        audio = AudioSegment.from_file(file_path)
+        sample_rate = audio.frame_rate
+        samples = np.array(audio.get_array_of_samples())
     
-    # Load the audio file
-    audio = AudioSegment.from_file(file_path)
-    sample_rate = audio.frame_rate
-    samples = np.array(audio.get_array_of_samples())
-
-    # Convert samples to 16-bit PCM
-    if audio.sample_width == 2:
-        samples = samples.astype(np.int16)
-    else:
-        samples = (samples / 256).astype(np.int16)
+        # Convert samples to 16-bit PCM
+        if audio.sample_width == 2:
+            samples = samples.astype(np.int16)
+        else:
+            samples = (samples / 256).astype(np.int16)
+        
+        # Frame parameters for VAD
+        frame_duration = 30  # milliseconds
+        frame_size = int(sample_rate * frame_duration / 1000)
+        
+        # Check if audio is too short
+        if len(samples) < frame_size:
+            return True
+        
+        # Detect speech in frames
+        for start in range(0, len(samples) - frame_size, frame_size):
+            frame = samples[start:start + frame_size]
+            if vad.is_speech(frame.tobytes(), sample_rate):
+                return False  # Speech detected
     
-    # Frame parameters for VAD
-    frame_duration = 30  # milliseconds
-    frame_size = int(sample_rate * frame_duration / 1000)
-    
-    # Check if audio is too short
-    if len(samples) < frame_size:
-        return True
-    
-    # Detect speech in frames
-    for start in range(0, len(samples) - frame_size, frame_size):
-        frame = samples[start:start + frame_size]
-        if vad.is_speech(frame.tobytes(), sample_rate):
-            return False  # Speech detected
-
-    return True  # No speech detected
+        return True  # No speech detected
 
