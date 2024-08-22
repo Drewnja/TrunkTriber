@@ -1,3 +1,4 @@
 whisper
 watchdog
 colorama
+pydub

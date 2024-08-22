@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 from threading import Thread, Event
 from watchdog.events import FileSystemEventHandler
+from pydub import AudioSegment
 from utils import display
 from utils.display import progress_indicator, stop_progress
 from colorama import Fore, Style
@@ -23,6 +24,12 @@ class AudioHandler(FileSystemEventHandler):
             self.process_audio_file(event.src_path)
 
     def process_audio_file(self, file_path):
+        # Check if the audio file is too short
+        if self.is_audio_too_short(file_path, 1.5):
+            print(f"{Fore.YELLOW} [⚠️] Audio file too short, deleting: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
+            os.remove(file_path)
+            return
+
         filename = os.path.basename(file_path)
         print(f"\n [💾] New audio: {Fore.GREEN + Style.BRIGHT}{filename}{Style.RESET_ALL}")
 
@@ -39,6 +46,12 @@ class AudioHandler(FileSystemEventHandler):
         else:
             print(f"{Fore.YELLOW} [⚠️] SDRTrunk filename format not found{Style.RESET_ALL}")
             self.transcribe_and_print_result(file_path, formatted_creation_datetime)
+
+    def is_audio_too_short(self, file_path, threshold_seconds):
+        # Load the audio file and get its duration
+        audio = AudioSegment.from_file(file_path)
+        duration_seconds = len(audio) / 1000.0  # Convert milliseconds to seconds
+        return duration_seconds < threshold_seconds
 
     def extract_from_to_numbers(self, filename):
         match = re.search(r'TO_(\d+)_FROM_(\d+)', filename)
