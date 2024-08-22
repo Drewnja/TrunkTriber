@@ -39,14 +39,28 @@ class AudioHandler(FileSystemEventHandler):
         filename = os.path.basename(file_path)
         print(f"\n [💾] New audio: {Fore.GREEN + Style.BRIGHT}{filename}{Style.RESET_ALL}")
 
-        # Get the creation date and time
-        creation_time = os.path.getctime(file_path)
-        creation_datetime = datetime.fromtimestamp(creation_time)
-        formatted_creation_datetime = creation_datetime.strftime('%Y-%m-%d %H:%M:%S')
+        # Extract date and time from filename
+        date_str, time_str = self.extract_datetime_from_filename(filename)
+        formatted_creation_datetime = f"{date_str} {time_str}"
 
         # Extract FROM and TO numbers using regex
         from_number, to_number = self.extract_from_to_numbers(filename)
         self.transcribe_and_print_result(file_path, formatted_creation_datetime, from_number, to_number)
+
+    def extract_datetime_from_filename(self, filename):
+        # Extract the date and time portions from the filename
+        date_match = re.search(r'(\d{8})_(\d{6})', filename)
+        if date_match:
+            date_str = date_match.group(1)
+            time_str = date_match.group(2)
+
+            # Convert date_str and time_str to the desired format
+            formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+            formatted_time = f"{time_str[:2]}:{time_str[2:4]}:{time_str[4:]}"
+            return formatted_date, formatted_time
+
+        # Return empty strings if the pattern doesn't match
+        return '', ''
 
     def extract_from_to_numbers(self, filename):
         to_match = re.search(r'TO_(\d+)', filename)
@@ -60,14 +74,14 @@ class AudioHandler(FileSystemEventHandler):
         stop_progress_event.clear()
         progress_thread = Thread(target=progress_indicator)
         progress_thread.start()
-
+    
         # Transcribe the audio file
         result = transcribe_audio(file_path)
-
+    
         # Stop the progress indicator
         stop_progress_event.set()
         progress_thread.join()
-
+    
         # Format and print the output with hyphen
         output = f"{Fore.GREEN + Style.BRIGHT}{formatted_creation_datetime}{Style.RESET_ALL} "
         if from_number:
@@ -78,7 +92,7 @@ class AudioHandler(FileSystemEventHandler):
             print(f"{Fore.YELLOW} [⚠️] SDRTrunk filename format not fully recognized{Style.RESET_ALL}")
         output += f"- {Fore.WHITE + Style.BRIGHT}{result}{Style.RESET_ALL}"
         print(output)
-
+    
         display.print_waiting_message()
 
     def is_short_audio(self, file_path):
