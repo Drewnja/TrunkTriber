@@ -2,3 +2,4 @@ whisper
 watchdog
 colorama
 pydub
+webrtcvad

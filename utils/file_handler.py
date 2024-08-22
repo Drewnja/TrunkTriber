@@ -4,6 +4,7 @@ from datetime import datetime
 from threading import Thread, Event
 from watchdog.events import FileSystemEventHandler
 from pydub import AudioSegment
+import webrtcvad
 from utils import display
 from utils.display import progress_indicator, stop_progress
 from colorama import Fore, Style
@@ -15,6 +16,8 @@ stop_progress_event = Event()
 class AudioHandler(FileSystemEventHandler):
     def __init__(self, model):
         self.model = model
+        self.vad = webrtcvad.Vad()
+        self.vad.set_mode(1)  # 0 is least aggressive, 3 is most aggressive
 
     def on_created(self, event):
         if event.is_directory:
@@ -27,6 +30,12 @@ class AudioHandler(FileSystemEventHandler):
         # Check if the audio file is too short
         if self.is_audio_too_short(file_path, 1.5):
             print(f"{Fore.YELLOW} [⚠️] Audio file too short, deleting: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
+            os.remove(file_path)
+            return
+
+        # Check if the audio file contains speech
+        if not self.contains_speech(file_path):
+            print(f"{Fore.YELLOW} [⚠️] No speech detected, deleting: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
             os.remove(file_path)
             return
 
@@ -52,6 +61,25 @@ class AudioHandler(FileSystemEventHandler):
         audio = AudioSegment.from_file(file_path)
         duration_seconds = len(audio) / 1000.0  # Convert milliseconds to seconds
         return duration_seconds < threshold_seconds
+
+    def contains_speech(self, file_path):
+        audio = AudioSegment.from_file(file_path)
+        audio = audio.set_frame_rate(16000).set_channels(1)  # Set to mono and 16kHz for VAD
+
+        samples = audio.get_array_of_samples()
+        vad = webrtcvad.Vad()
+        vad.set_mode(1)  # Adjust aggressiveness mode 0-3
+
+        # Split audio into 30ms chunks
+        chunk_size = int(16000 * 0.03)
+        chunks = [samples[i:i + chunk_size] for i in range(0, len(samples), chunk_size)]
+
+        # Check each chunk for speech
+        for chunk in chunks:
+            if vad.is_speech(chunk.tobytes(), 16000):
+                return True  # Speech detected
+
+        return False  # No speech detected
 
     def extract_from_to_numbers(self, filename):
         match = re.search(r'TO_(\d+)_FROM_(\d+)', filename)
