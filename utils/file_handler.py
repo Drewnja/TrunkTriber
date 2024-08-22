@@ -1,13 +1,16 @@
 import os
 import re
 from datetime import datetime
-from threading import Thread
+from threading import Event, Thread
 from watchdog.events import FileSystemEventHandler
 from utils import display
-from utils.display import progress_indicator, stop_progress_event
+from utils.display import progress_indicator
 from colorama import Fore, Style
 from models.whisper_model import transcribe_audio
 from pydub import AudioSegment
+
+# Create a global event to control the progress indicator
+stop_progress_event = Event()
 
 class AudioHandler(FileSystemEventHandler):
     def __init__(self, model):
