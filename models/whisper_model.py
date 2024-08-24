@@ -1,3 +1,5 @@
+# whisper_model.py
+
 from colorama import Fore, Style
 import whisper
 from time import time

@@ -1,3 +1,5 @@
+# filehandler.py
+
 import os
 import re
 from datetime import datetime
@@ -38,17 +40,17 @@ class AudioHandler(FileSystemEventHandler):
             print(f"\n[🗑️] Deleted silent audio file: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
             display.print_waiting_message()
             return
-
-        filename = os.path.basename(file_path)
-        print(f"\n [💾] New audio: {Fore.GREEN + Style.BRIGHT}{filename}{Style.RESET_ALL}")
-
-        # Extract date and time from filename
-        date_str, time_str = self.extract_datetime_from_filename(filename)
-        formatted_creation_datetime = f"{date_str} {time_str}"
-
-        # Extract FROM and TO numbers using regex
-        from_number, to_number = self.extract_from_to_numbers(filename)
-        self.transcribe_and_print_result(file_path, formatted_creation_datetime, from_number, to_number)
+        else:
+            filename = os.path.basename(file_path)
+            print(f"\n [💾] New audio: {Fore.GREEN + Style.BRIGHT}{filename}{Style.RESET_ALL}")
+    
+            # Extract date and time from filename
+            date_str, time_str = self.extract_datetime_from_filename(filename)
+            formatted_creation_datetime = f"{date_str} {time_str}"
+    
+            # Extract FROM and TO numbers using regex
+            from_number, to_number = self.extract_from_to_numbers(filename)
+            self.transcribe_and_print_result(file_path, formatted_creation_datetime, from_number, to_number)
 
     def extract_datetime_from_filename(self, filename):
         # Extract the date and time portions from the filename
@@ -106,33 +108,30 @@ class AudioHandler(FileSystemEventHandler):
         return duration_in_seconds < 1.5
 
     def is_silent_audio(self, file_path):
-        # Initialize VAD (Voice Activity Detector)
-        vad = webrtcvad.Vad()
-        
+        # Initialize VAD with aggressiveness mode 1
+        vad = webrtcvad.Vad(3)
+
         # Load the audio file
         audio = AudioSegment.from_file(file_path)
         sample_rate = audio.frame_rate
         samples = np.array(audio.get_array_of_samples())
-    
-        # Convert samples to 16-bit PCM
-        if audio.sample_width == 2:
-            samples = samples.astype(np.int16)
-        else:
+
+        # Convert samples to 16-bit PCM if needed
+        if audio.sample_width != 2:
             samples = (samples / 256).astype(np.int16)
-        
-        # Frame parameters for VAD
-        frame_duration = 30  # milliseconds
-        frame_size = int(sample_rate * frame_duration / 1000)
-        
-        # Check if audio is too short
+
+        # Define frame size for VAD (30 ms frames)
+        frame_size = int(sample_rate * 0.03)  # 30 milliseconds
+
+        # If audio is too short, consider it silent
         if len(samples) < frame_size:
             return True
-        
-        # Detect speech in frames
+
+        # Check for speech in frames
         for start in range(0, len(samples) - frame_size, frame_size):
             frame = samples[start:start + frame_size]
             if vad.is_speech(frame.tobytes(), sample_rate):
                 return False  # Speech detected
-    
+
         return True  # No speech detected
 
