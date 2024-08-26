@@ -1,4 +1,4 @@
-# filehandler.py
+# file_handler.py
 
 import os
 import re
@@ -12,7 +12,6 @@ from models.whisper_model import transcribe_audio
 from pydub import AudioSegment
 import webrtcvad
 import numpy as np
-
 
 # Create a global event to control the progress indicator
 stop_progress_event = Event()
@@ -30,27 +29,25 @@ class AudioHandler(FileSystemEventHandler):
 
     def process_audio_file(self, file_path):
         if self.is_short_audio(file_path):
-            os.remove(file_path)
-            print(f"\n[🗑️] Deleted short audio file: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
+            print(f"\n[🗑️] Skipped short audio file: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
             display.print_waiting_message()
             return
 
         if self.is_silent_audio(file_path):
-            os.remove(file_path)
-            print(f"\n[🗑️] Deleted silent audio file: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
+            print(f"\n[🗑️] Skipped silent audio file: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
             display.print_waiting_message()
             return
-        else:
-            filename = os.path.basename(file_path)
-            print(f"\n [💾] New audio: {Fore.GREEN + Style.BRIGHT}{filename}{Style.RESET_ALL}")
-    
-            # Extract date and time from filename
-            date_str, time_str = self.extract_datetime_from_filename(filename)
-            formatted_creation_datetime = f"{date_str} {time_str}"
-    
-            # Extract FROM and TO numbers using regex
-            from_number, to_number = self.extract_from_to_numbers(filename)
-            self.transcribe_and_print_result(file_path, formatted_creation_datetime, from_number, to_number)
+
+        filename = os.path.basename(file_path)
+        print(f"\n [💾] Processing audio: {Fore.GREEN + Style.BRIGHT}{filename}{Style.RESET_ALL}")
+
+        # Extract date and time from filename
+        date_str, time_str = self.extract_datetime_from_filename(filename)
+        formatted_creation_datetime = f"{date_str} {time_str}"
+
+        # Extract FROM and TO numbers using regex
+        from_number, to_number = self.extract_from_to_numbers(filename)
+        self.transcribe_and_print_result(file_path, formatted_creation_datetime, from_number, to_number)
 
     def extract_datetime_from_filename(self, filename):
         # Extract the date and time portions from the filename
@@ -108,7 +105,7 @@ class AudioHandler(FileSystemEventHandler):
         return duration_in_seconds < 1.5
 
     def is_silent_audio(self, file_path):
-        # Initialize VAD with aggressiveness mode 1
+        # Initialize VAD with aggressiveness mode 3
         vad = webrtcvad.Vad(3)
 
         # Load the audio file
@@ -134,4 +131,3 @@ class AudioHandler(FileSystemEventHandler):
                 return False  # Speech detected
 
         return True  # No speech detected
-
