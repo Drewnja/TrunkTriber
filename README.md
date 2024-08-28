@@ -23,10 +23,12 @@ TrunkTriber is a Python tool for transcribing audio files from trunked radio sys
     pip install -r requirements.txt
 
 3. Run the script:
+   Note: On first launch script will download Whisper large-v3 model, which can take a while (Model is ~1.5GB).
 
     ```bash
 
     python3 main.py
+    ```
 
 License
 MIT License. See LICENSE for details.
