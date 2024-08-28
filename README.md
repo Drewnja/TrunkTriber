@@ -1,2 +1,33 @@
-# TrunkTriber - SDRTrunk transcriber and organizer 
-# WARNING! The project is WIP and as of now is in REALLY early stage
+# TrunkTriber
+
+TrunkTriber is a Python tool for transcribing audio files from trunked radio systems using Whisper AI. It supports both live and batch processing of recordings. Was originally designed to work with SDRtrunk, can parse SDRtrunk filename format, but can be used with any audiofiles.
+
+## Features
+
+- Live audio transcription
+- Batch processing of audio files
+
+## Requirements
+
+- Python 3.8 or 3.9
+
+## Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Drewnja/TrunkTriber.git
+   cd TrunkTriber
+
+2. Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+
+3. Run the script:
+
+    ```bash
+
+    python3 main.py
+
+License
+MIT License. See LICENSE for details.
+
