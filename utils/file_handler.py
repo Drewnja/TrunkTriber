@@ -1,24 +1,26 @@
-# file_handler.py
-
 import os
 import re
 from datetime import datetime
-from threading import Event, Thread
+from threading import Event, Thread, Lock
+import time
 from watchdog.events import FileSystemEventHandler
 from utils import display
-from utils.display import progress_indicator
 from colorama import Fore, Style
 from models.whisper_model import transcribe_audio
 from pydub import AudioSegment
 import webrtcvad
 import numpy as np
+import itertools
 
 # Create a global event to control the progress indicator
 stop_progress_event = Event()
+progress_lock = Lock()
+spinner_cycle = itertools.cycle(['◜', '◝', '◞', '◟'])
 
 class AudioHandler(FileSystemEventHandler):
     def __init__(self, model):
         self.model = model
+        self.thread_data = {}
 
     def on_created(self, event):
         if event.is_directory:
@@ -27,7 +29,7 @@ class AudioHandler(FileSystemEventHandler):
         if event.src_path.endswith('.mp3'):
             self.process_audio_file(event.src_path)
 
-    def process_audio_file(self, file_path):
+    def process_audio_file(self, file_path, thread_index=None):
         if self.is_short_audio(file_path):
             print(f"\n[🗑️] Skipped short audio file: {Fore.RED + Style.BRIGHT}{os.path.basename(file_path)}{Style.RESET_ALL}")
             display.print_waiting_message()
@@ -47,7 +49,37 @@ class AudioHandler(FileSystemEventHandler):
 
         # Extract FROM and TO numbers using regex
         from_number, to_number = self.extract_from_to_numbers(filename)
-        self.transcribe_and_print_result(file_path, formatted_creation_datetime, from_number, to_number)
+
+        # Start thread-specific progress indicator
+        if thread_index is not None:
+            self.start_progress_indicator(thread_index, filename)
+
+        self.transcribe_and_print_result(file_path, formatted_creation_datetime, from_number, to_number, thread_index)
+
+        # Stop thread-specific progress indicator
+        if thread_index is not None:
+            self.stop_progress_indicator(thread_index)
+
+    def start_progress_indicator(self, thread_index, filename):
+        stop_progress_event.clear()
+        self.thread_data[thread_index] = {
+            'filename': filename,
+            'progress_thread': Thread(target=self.progress_indicator, args=(thread_index,))
+        }
+        self.thread_data[thread_index]['progress_thread'].start()
+
+    def stop_progress_indicator(self, thread_index):
+        stop_progress_event.set()
+        self.thread_data[thread_index]['progress_thread'].join()
+        del self.thread_data[thread_index]
+
+    def progress_indicator(self, thread_index):
+        while not stop_progress_event.is_set():
+            with progress_lock:
+                spinner = next(spinner_cycle)
+                print(f"\r[ 🧵 ] Thread #{thread_index + 1}: {self.thread_data[thread_index]['filename']} | Processing {spinner}", end="")
+            time.sleep(0.1)
+        print("\r" + " " * 80, end="\r")  # Clear the line
 
     def extract_datetime_from_filename(self, filename):
         # Extract the date and time portions from the filename
@@ -71,18 +103,8 @@ class AudioHandler(FileSystemEventHandler):
         from_number = from_match.group(1) if from_match else ''
         return from_number, to_number
 
-    def transcribe_and_print_result(self, file_path, formatted_creation_datetime, from_number='', to_number=''):
-        # Start the progress indicator
-        stop_progress_event.clear()
-        progress_thread = Thread(target=progress_indicator)
-        progress_thread.start()
-
-        # Transcribe the audio file
+    def transcribe_and_print_result(self, file_path, formatted_creation_datetime, from_number='', to_number='', thread_index=None):
         result = transcribe_audio(file_path)
-
-        # Stop the progress indicator
-        stop_progress_event.set()
-        progress_thread.join()
 
         # Format and print the output with hyphen
         output = f"{Fore.GREEN + Style.BRIGHT}{formatted_creation_datetime}{Style.RESET_ALL} "
